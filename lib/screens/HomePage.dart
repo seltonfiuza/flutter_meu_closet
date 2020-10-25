@@ -1,6 +1,8 @@
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:meu_closet/screens/AddNewItem.dart';
+import 'package:meu_closet/screens/DescPage.dart';
 import 'package:meu_closet/screens/Root.dart';
 import 'package:meu_closet/services/auth.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
@@ -17,20 +19,59 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  var hasGallery = false;
+  List gallery = [];
   final dbRef = FirebaseDatabase.instance.reference();
+  List selected = [];
   bool dialVisible = true;
-  @override
-  void initState() {
-    super.initState();
-  }
-
+  List dataGallery = [];
+  bool pressed = false;
+  var emptySelected;
   var collection;
+
   Future<bool> checkGallery() async {
     this.collection = dbRef.child(widget.userId).reference();
-    this.collection.once().then((DataSnapshot snapshot) {
+    this.collection.once().then((DataSnapshot snapshot) async {
       var data = snapshot.value;
+      // print(data);
       if (data.containsKey('gallery')) {
+        if (!hasGallery) {
+          setState(() {
+            hasGallery = true;
+          });
+        }
+        for (var item in data['gallery']) {
+          try {
+            var ref = FirebaseStorage().ref().child(item['path']);
+            var imageDownload = await ref.getDownloadURL();
+
+            if (gallery.contains(imageDownload)) {
+              continue;
+            } else {
+              setState(() {
+                gallery = [...gallery, imageDownload];
+                this.selected.add(Colors.white);
+              });
+            }
+          } catch (e) {
+            print("AAAAAAAAAAAa");
+            setState(() {
+              this.gallery.remove(item);
+            });
+          }
+        }
+        var a = new List(this.selected.length);
+        a.fillRange(0, this.selected.length, Colors.white);
+        setState(() {
+          emptySelected = a;
+          dataGallery = data['gallery'];
+        });
         return true;
+      } else {
+        setState(() {
+          this.hasGallery = false;
+          this.gallery = [];
+        });
       }
       // print('Connected to second database and read ${snapshot.value}');
     });
@@ -60,10 +101,8 @@ class _HomePageState extends State<HomePage> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => AddNewItemPage(
-                  auth: new Auth(),
-                  userId: widget.userId
-                ),
+                builder: (context) =>
+                    AddNewItemPage(auth: new Auth(), userId: widget.userId),
               ),
             )
           },
@@ -85,9 +124,65 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  List index = [];
+  enableDelete(index) async {
+    if (!this.index.contains(index)) {
+      setState(() {
+        this.pressed = true;
+        this.index = [...this.index, index];
+        this.selected[index] = Colors.grey;
+      });
+    }
+  }
+
+  delete() async {
+    this.collection = dbRef.child(widget.userId).reference();
+    this.collection.once().then((DataSnapshot snapshot) async {
+      var data = snapshot.value;
+      var a = List.from(data['gallery']);
+      // var ref = await FirebaseStorage()
+      //     .ref()
+      //     .child(data['gallery'][this.index])
+      //     .delete();
+      var ga;
+      var g;
+      print(this.index);
+      print(a);
+      if (a.length != 0) {
+        for (var idx in this.index) {
+          if (a.length == 1) {
+            a.removeAt(0);
+          } else {
+            a.removeAt(idx);
+          }
+          ga = {"gallery": a};
+          g = new List.from(this.gallery);
+          g.removeAt(idx);
+          print("0");
+        }
+      } else {
+        this.setState(() {
+          // this.pressed = false;
+          this.selected = [];
+          this.gallery = [];
+        });
+      }
+      print("2");
+      await dbRef.child(widget.userId).reference().update(ga);
+      print(this.gallery);
+      this.setState(() {
+        this.gallery = g;
+        this.pressed = false;
+        this.index = [];
+      });
+      this.checkGallery();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    print(checkGallery());
+    checkGallery();
+    // print(this.gallery);
     return WillPopScope(
       onWillPop: () async => false,
       child: Scaffold(
@@ -97,24 +192,75 @@ class _HomePageState extends State<HomePage> {
           backgroundColor: Colors.pink,
           automaticallyImplyLeading: false,
           actions: <Widget>[
-            IconButton(
-              icon: Icon(
-                Icons.settings,
-                color: Colors.white,
-              ),
-              onPressed: () {
-                widget.auth.signOut();
-                Navigator.pop(context);
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => RootPage(auth: new Auth())));
-              },
-            )
+            this.pressed
+                ? Row(children: [
+                    IconButton(
+                      icon: Icon(
+                        Icons.delete,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => delete(),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.cancel,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => {
+                        this.setState(() {
+                          this.pressed = false;
+                          this.selected = this.emptySelected;
+                        })
+                      },
+                    )
+                  ])
+                : IconButton(
+                    icon: Icon(
+                      Icons.exit_to_app,
+                      color: Colors.white,
+                    ),
+                    onPressed: () {
+                      widget.auth.signOut();
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) =>
+                                  RootPage(auth: new Auth())));
+                    },
+                  )
           ],
         ),
-        body: this.checkGallery() == true
-            ? Container()
+        body: this.hasGallery
+            ? GridView.count(
+                crossAxisCount: 2,
+                children: List.generate(this.gallery.length, (index) {
+                  return InkWell(
+                    onLongPress: () => enableDelete(index),
+                    onTap: () => {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => DescPage(
+                                auth: widget.auth,
+                                userId: widget.userId,
+                                item: this.dataGallery[index])),
+                      )
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Container(
+                        color: this.selected[index],
+                        height: 70,
+                        width: 70,
+                        child: Image.network(
+                          this.gallery[index],
+                          fit: BoxFit.scaleDown,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              )
             : Padding(
                 padding: EdgeInsets.all(20.0),
                 child: Center(
