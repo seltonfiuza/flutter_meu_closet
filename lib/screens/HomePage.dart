@@ -140,12 +140,9 @@ class _HomePageState extends State<HomePage> {
     this.collection.once().then((DataSnapshot snapshot) async {
       var data = snapshot.value;
       var a = List.from(data['gallery']);
-      // var ref = await FirebaseStorage()
-      //     .ref()
-      //     .child(data['gallery'][this.index])
-      //     .delete();
       var ga;
       var g;
+      var refForDelete;
       print(this.index);
       print(a);
       if (a.length != 0) {
@@ -155,6 +152,7 @@ class _HomePageState extends State<HomePage> {
           } else {
             a.removeAt(idx);
           }
+          refForDelete = this.gallery[idx].split('?')[0];
           ga = {"gallery": a};
           g = new List.from(this.gallery);
           g.removeAt(idx);
@@ -175,6 +173,13 @@ class _HomePageState extends State<HomePage> {
         this.pressed = false;
         this.index = [];
       });
+      refForDelete = refForDelete.split("?")[0];
+      var ref = await FirebaseStorage.instance
+          .ref()
+          .getStorage()
+          .getReferenceFromUrl(refForDelete);
+      print(ref);
+      ref.delete();
       this.checkGallery();
     });
   }
